@@ -6,22 +6,17 @@ int main(int argc, char* args[]) {
     //setup graphics
     initialize_chip8("./rom/octojam.ch8");
 
-    emulate_cycle();
-    fflush(stdout);
-    emulate_cycle();
-    fflush(stdout);
-    emulate_cycle();
-    fflush(stdout);
-    emulate_cycle();
-    fflush(stdout);
-    emulate_cycle();
-    fflush(stdout);
-    emulate_cycle();
-    fflush(stdout);
+    for (size_t i = 0; i < 2000; i++) {
+        emulate_cycle();
+        fflush(stdout);
+        usleep(500);
+    }
+
+    printf("We done yeah?\n");
 
     SDL_Event event;
-    while (true) {
-        usleep(50000);
+    while (1) {
+        usleep(5000);
         if (SDL_PollEvent(&event) && event.type == SDL_QUIT) {
             break;
         }

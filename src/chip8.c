@@ -21,6 +21,8 @@ unsigned char chip8_fontset[80] = {
 
 void initialize_chip8(char* path_to_rom) {
     chip = (chip8*)malloc(sizeof(chip8));
+    printf("chip malloced\n");
+    srand(time(NULL));
 
     chip->pc = 0x200;
     chip->i = 0;
@@ -48,6 +50,7 @@ void initialize_chip8(char* path_to_rom) {
             chip->memory[count] = byte;
             count++;
         }
+
         fclose(file);
     }
 
@@ -86,14 +89,14 @@ void exec_instr(opcode instr) {
         case 0x0:
             switch (instr) {
                 //clear screen
-                case 0x00E0:
+                case 0x00e0:
                     clear_display(chip->graphics);
                     chip->pc += 2;
                     break;
                 //exit subroutine
-                case 0x00EE:
-                    fprintf(stderr, "Return from subroutine, not implemented\n");
-                    exit_rountine(EXIT_FAILURE);
+                case 0x00ee:
+                    chip->sp--;
+                    chip->pc = chip->stack[chip->sp];
                     break;
                 default:
                     fprintf(stderr, "Unknown instruction 0x%04x\n", instr);
@@ -107,60 +110,51 @@ void exec_instr(opcode instr) {
             break;
         case 0x2:
             //Call subroutine
-            fprintf(stderr, "Call subroutine, not implemented\n");
-            exit_rountine(EXIT_FAILURE);
+            chip->pc += 2;
+            chip->stack[chip->sp] = chip->pc;
+            chip->sp++;
+            chip->pc = (instr & 0xfff);
             break;
-        case 0x3:
+        case 0x3: {
             //Skip the following instruction if the value of register VX equals NN
-            {
-                size_t ireg = (instr & 0x0f00) >> 8;
-                size_t val = (instr & 0x00ff);
-                if (chip->reg[ireg] == val) {
-                    chip->pc += 2;
-                }
+            size_t ireg = (instr & 0x0f00) >> 8;
+            size_t val = (instr & 0x00ff);
+            if (chip->reg[ireg] == val) {
                 chip->pc += 2;
             }
-            break;
-        case 0x4:
+            chip->pc += 2;
+        } break;
+        case 0x4: {
             //Skip the following instruction if the value of register VX is not equal to NN
-            {
-                size_t ireg = (instr & 0x0f00 >> 8);
-                size_t val = (instr & 0x00ff);
-                if (chip->reg[ireg] != val) {
-                    chip->pc += 2;
-                }
+            size_t ireg = ((instr & 0x0f00) >> 8);
+            size_t val = (instr & 0x00ff);
+            if (chip->reg[ireg] != val) {
                 chip->pc += 2;
             }
-            break;
-        case 0x5:
+            chip->pc += 2;
+        } break;
+        case 0x5: {
             //Skip the following instruction if the value of register VX is equal to the value of register VY
-            {
-                size_t iregx = (instr & 0x0f00) >> 8;
-                size_t iregy = (instr & 0x00f0) >> 4;
-                if (chip->reg[iregx] == chip->reg[iregy]) {
-                    chip->pc += 2;
-                }
+            size_t iregx = (instr & 0x0f00) >> 8;
+            size_t iregy = (instr & 0x00f0) >> 4;
+            if (chip->reg[iregx] == chip->reg[iregy]) {
                 chip->pc += 2;
             }
-            break;
-        case 0x6:
+            chip->pc += 2;
+        } break;
+        case 0x6: {
             //Set VX to NN
-            {
-                size_t ireg = (instr & 0x0f00) >> 8;
-                size_t val = (instr & 0x00ff);
-                chip->reg[ireg] = val;
-                chip->pc += 2;
-            }
-            break;
-        case 0x7:
+            size_t ireg = (instr & 0x0f00) >> 8;
+            chip->reg[ireg] = (instr & 0x00ff);
+            chip->pc += 2;
+        } break;
+        case 0x7: {
             //Add NN to VX
-            {
-                size_t ireg = (instr & 0x0f00) >> 8;
-                size_t val = (instr & 0x00ff);
-                chip->reg[ireg] += val;
-                chip->pc += 2;
-            }
-            break;
+            size_t ireg = (instr & 0x0f00) >> 8;
+            size_t val = (instr & 0x00ff);
+            chip->reg[ireg] += val;
+            chip->pc += 2;
+        } break;
         case 0x8: {
             size_t iregx = (instr & 0x0f00) >> 8;
             size_t iregy = (instr & 0x00f0) >> 4;
@@ -178,18 +172,129 @@ void exec_instr(opcode instr) {
                 case 0x3:
                     chip->reg[iregx] = chip->reg[iregy] ^ chip->reg[iregx];
                     break;
+                case 0x4: {
+                    char carry = ((chip->reg[iregx] + chip->reg[iregy] > 0xff) ? 1 : 0);
+                    chip->reg[iregx] += chip->reg[iregy];
+                    chip->reg[0xf] = carry;
+                } break;
+                case 0x5: {
+                    char carry = ((chip->reg[iregx] > chip->reg[iregy]) ? 1 : 0);
+                    chip->reg[iregx] -= chip->reg[iregy];
+                    chip->reg[0xf] = carry;
+                } break;
+                case 0x6:
+                    chip->reg[0xf] = (chip->reg[iregy] & 0x1);
+                    chip->reg[iregx] = chip->reg[iregy] >> 1;
+                    break;
+                case 0x7:
+                    char carry = ((chip->reg[iregy] > chip->reg[iregx]) ? 1 : 0);
+                    chip->reg[iregx] = chip->reg[iregy] - chip->reg[iregx];
+                    chip->reg[0xf] = carry;
+                    break;
+                case 0xe:
+                    chip->reg[0xf] = (chip->reg[iregy] & 0x80);
+                    chip->reg[iregx] = chip->reg[iregy] << 1;
+                    break;
                 default:
                     fprintf(stderr, "Unknown instruction 0x%04x\n", instr);
                     exit_rountine(EXIT_FAILURE);
                     break;
             }
         } break;
-
-        case 0xa: {
-            size_t addr = (instr & 0x0fff);
-            size_t val = chip->memory[addr];
-            chip->i = val;
+        case 0x9: {
+            //Skip the following instruction if register VX is not equal to register VY
+            size_t iregx = ((instr & 0x0f00) >> 8);
+            size_t iregy = ((instr & 0x00f0) >> 4);
+            if (chip->reg[iregx] != chip->reg[iregy]) {
+                chip->pc += 2;
+            }
             chip->pc += 2;
+        } break;
+        case 0xa: {
+            chip->i = (instr & 0x0fff);
+            chip->pc += 2;
+        } break;
+        case 0xb:
+            chip->pc = (instr & 0xfff) + chip->reg[0];
+            break;
+        case 0xc:
+            chip->reg[(instr & 0x0f00) >> 8] = (rand() % 0xf00) & (instr & 0xff);
+            chip->pc += 2;
+            break;
+        case 0xd: {
+            size_t iregx = ((instr & 0x0f00) >> 8);
+            size_t iregy = ((instr & 0x00f0) >> 4);
+            char n = (instr & 0x000f);
+
+            drawScreen(chip->reg[iregx], chip->reg[iregy], n);
+            //printDisplay();
+
+            if (chip->reg[0xf] != 0x0) {
+                SDL_update_surface(chip->graphics);
+                SDL_update_frame(chip->graphics);
+            }
+
+            chip->pc += 2;
+
+        } break;
+        case 0xe:
+            switch (instr & 0xff) {
+                case 0x9e:
+                    if (chip->input[chip->reg[(instr & 0x0f00) >> 8]]) {
+                        chip->pc += 2;
+                    }
+                    chip->pc += 2;
+                    break;
+
+                default:
+                    fprintf(stderr, "Unknown instruction 0x%04x\n", instr);
+                    exit_rountine(EXIT_FAILURE);
+                    break;
+            }
+            break;
+        case 0xf: {
+            switch (instr & 0x00ff) {
+                case 0x07:
+                    chip->reg[(instr & 0x0f00) >> 8] = chip->delay_timer;
+                    chip->pc += 2;
+                    break;
+                case 0x1e:
+                    chip->i += chip->reg[(instr & 0x0f00) >> 8];
+                    chip->pc += 2;
+                    break;
+                case 0x15:
+                    chip->delay_timer = chip->reg[(instr & 0x0f00) >> 8];
+                    chip->pc += 2;
+                    break;
+                case 0x33: {
+                    size_t iregx = ((instr & 0x0f00) >> 8);
+                    size_t hund = chip->reg[iregx] / 100;
+                    size_t tens = (chip->reg[iregx] - (hund * 100)) / 10;
+                    size_t unit = chip->reg[iregx] - (hund * 100) - (tens * 10);
+
+                    chip->memory[chip->i] = hund;
+                    chip->memory[chip->i + 1] = tens;
+                    chip->memory[chip->i + 2] = unit;
+                    chip->pc += 2;
+                } break;
+                case 0x55:
+                    for (size_t i = 0; i <= ((instr & 0x0f00) >> 8); i++) {
+                        chip->memory[chip->i + i] = chip->reg[i];
+                    }
+                    chip->pc += 2;
+                    break;
+                case 0x65:
+                    for (size_t i = 0; i <= ((instr & 0x0f00) >> 8); i++) {
+                        chip->reg[i] = chip->memory[chip->i + i];
+                    }
+                    chip->pc += 2;
+                    break;
+                default:
+                    fprintf(stderr, "Unknown instruction 0x%04x\n", instr);
+                    exit_rountine(EXIT_FAILURE);
+                    break;
+            }
+
         } break;
         default:
             fprintf(stderr, "Unknown instruction 0x%04x\n", instr);

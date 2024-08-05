@@ -3,7 +3,7 @@
 int SDL_init_context(sdl_graphics* graphics, char* title, size_t width, size_t height) {
     graphics->width = width;
     graphics->height = height;
-    
+
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         fprintf(stderr, "SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
         exit_rountine(EXIT_FAILURE);
@@ -20,6 +20,9 @@ int SDL_init_context(sdl_graphics* graphics, char* title, size_t width, size_t h
     SDL_SetWindowTitle(graphics->window, title);
     graphics->screenSurface = SDL_GetWindowSurface(graphics->window);
 
+    graphics->black = SDL_MapRGB(graphics->screenSurface->format, RB, GB, BB);
+    graphics->white = SDL_MapRGB(graphics->screenSurface->format, RW, GW, BW);
+
     return SDL_INIT_SUCCESS;
 }
 
@@ -34,10 +37,15 @@ void SDL_update_frame(sdl_graphics* graphics) {
         exit(EXIT_FAILURE);
     }
     SDL_RenderPresent(graphics->renderer);
+    SDL_DestroyTexture(current_texture);
 }
 
 void clear_display(sdl_graphics* graphics) {
-    SDL_SetRenderDrawColor(graphics->renderer, 0,0,0,0);
+    for (size_t i = 0; i < SCREEN_HEIGHT * SCREEN_WIDTH; i++) {
+        chip->screen[i] = 0x0;
+    }
+
+    SDL_SetRenderDrawColor(graphics->renderer, RB, GB, BB, SDL_ALPHA_OPAQUE);
     SDL_RenderClear(graphics->renderer);
     SDL_RenderPresent(graphics->renderer);
 }
@@ -57,3 +65,49 @@ void SDL_close(sdl_graphics* graphics) {
     free(graphics);
 }
 
+//This first does the draw screen on the chip 8 struct
+//need to then draw on our actual screen surface
+//Gotta check if it s right tho
+void drawScreen(char x, char y, char n) {
+    chip->reg[0xf] = 0x0;
+    for (char i = 0; i < n; i++) {
+        //Do one line (one byte of data)
+        for (char j = 0; j < 8; j++) {
+            size_t pixel_addr = ((x + j) % SCREEN_WIDTH) + ((y + i) % SCREEN_HEIGHT) * SCREEN_WIDTH;
+            char old_pixel = chip->screen[pixel_addr];
+            chip->screen[pixel_addr] ^= (chip->memory[chip->i + i] >> (((8 - 1) - j)));
+            chip->screen[pixel_addr] &= 0x1; //keep only the bit that says if it is on or off
+            char new_pixel = chip->screen[pixel_addr];
+            //update VF if needed
+            chip->reg[0xf] |= ((new_pixel == old_pixel) ? 0x1 : 0x0);
+        }
+    }
+}
+
+void printDisplay(void) {
+    for (size_t i = 0; i < SCREEN_HEIGHT; i++) {
+        for (size_t j = 0; j < SCREEN_WIDTH; j++) {
+            char to_print = (chip->screen[i * SCREEN_WIDTH + j] == 0x0) ? ' ' : '*';
+            printf("%c", to_print);
+        }
+        printf("\n");
+    }
+}
+
+void SDL_update_surface(sdl_graphics* graphics) {
+    for (size_t x = 0; x < SCREEN_WIDTH; x++) {
+        for (size_t y = 0; y < SCREEN_HEIGHT; y++) {
+            SDL_Rect pixel;
+            pixel.x = x * SCALE_FACTOR;
+            pixel.y = y * SCALE_FACTOR;
+            pixel.h = SCALE_FACTOR;
+            pixel.w = SCALE_FACTOR;
+
+            if (chip->screen[x + y * SCREEN_WIDTH] == 0x0) {
+                SDL_FillRect(graphics->screenSurface, &pixel, graphics->black);
+            } else {
+                SDL_FillRect(graphics->screenSurface, &pixel, graphics->white);
+            }
+        }
+    }
+}

@@ -21,7 +21,6 @@ unsigned char chip8_fontset[80] = {
 
 void initialize_chip8(char* path_to_rom) {
     chip = (chip8*)malloc(sizeof(chip8));
-    printf("chip malloced\n");
     srand(time(NULL));
 
     chip->pc = 0x200;
@@ -84,7 +83,7 @@ void exit_rountine(int exit_code) {
 }
 
 void exec_instr(opcode instr) {
-    printf("instruction is 0x%04x\n", instr);
+    //printf("instruction is 0x%04x\n", instr);
     switch (instr >> 12) {
         case 0x0:
             switch (instr) {
@@ -97,6 +96,10 @@ void exec_instr(opcode instr) {
                 case 0x00ee:
                     chip->sp--;
                     chip->pc = chip->stack[chip->sp];
+                    break;
+                //nop
+                case 0x00ff:
+                    chip->pc += 2;
                     break;
                 default:
                     fprintf(stderr, "Unknown instruction 0x%04x\n", instr);
@@ -142,12 +145,11 @@ void exec_instr(opcode instr) {
             }
             chip->pc += 2;
         } break;
-        case 0x6: {
+        case 0x6:
             //Set VX to NN
-            size_t ireg = (instr & 0x0f00) >> 8;
-            chip->reg[ireg] = (instr & 0x00ff);
+            chip->reg[((instr & 0x0f00) >> 8)] = (instr & 0x00ff);
             chip->pc += 2;
-        } break;
+            break;
         case 0x7: {
             //Add NN to VX
             size_t ireg = (instr & 0x0f00) >> 8;
@@ -163,38 +165,44 @@ void exec_instr(opcode instr) {
                 case 0x0:
                     chip->reg[iregx] = chip->reg[iregy];
                     break;
+                //apparently, these 3 instructions (8XY1, 8XY2, 8XY3) are supposed to reset VF to 0
                 case 0x1:
                     chip->reg[iregx] = chip->reg[iregy] | chip->reg[iregx];
+                    chip->reg[0xf] = 0; 
                     break;
                 case 0x2:
                     chip->reg[iregx] = chip->reg[iregy] & chip->reg[iregx];
+                    chip->reg[0xf] = 0; 
                     break;
                 case 0x3:
                     chip->reg[iregx] = chip->reg[iregy] ^ chip->reg[iregx];
+                    chip->reg[0xf] = 0; 
                     break;
                 case 0x4: {
-                    char carry = ((chip->reg[iregx] + chip->reg[iregy] > 0xff) ? 1 : 0);
+                    unsigned char carry = ((chip->reg[iregx] + chip->reg[iregy] > 0xff) ? 1 : 0);
                     chip->reg[iregx] += chip->reg[iregy];
                     chip->reg[0xf] = carry;
                 } break;
                 case 0x5: {
-                    char carry = ((chip->reg[iregx] > chip->reg[iregy]) ? 1 : 0);
-                    chip->reg[iregx] -= chip->reg[iregy];
+                    unsigned char carry = (chip->reg[iregy] <= chip->reg[iregx]);
+                    chip->reg[iregx] = ((int)chip->reg[iregx] - chip->reg[iregy]) & 0xff;
                     chip->reg[0xf] = carry;
                 } break;
-                case 0x6:
-                    chip->reg[0xf] = (chip->reg[iregy] & 0x1);
-                    chip->reg[iregx] = chip->reg[iregy] >> 1;
-                    break;
-                case 0x7:
-                    char carry = ((chip->reg[iregy] > chip->reg[iregx]) ? 1 : 0);
+                case 0x6: {
+                    unsigned char carry = (chip->reg[iregy] & 0x1);
+                    chip->reg[iregx] = ((chip->reg[iregy] >> 1) & 0x7f);
+                    chip->reg[0xf] = carry;
+                } break;
+                case 0x7: {
+                    unsigned char carry = (chip->reg[iregy] >= chip->reg[iregx]);
                     chip->reg[iregx] = chip->reg[iregy] - chip->reg[iregx];
                     chip->reg[0xf] = carry;
-                    break;
-                case 0xe:
-                    chip->reg[0xf] = (chip->reg[iregy] & 0x80);
-                    chip->reg[iregx] = chip->reg[iregy] << 1;
-                    break;
+                } break;
+                case 0xe: {
+                    unsigned char carry = (chip->reg[iregy] & 0x80) >> 7;
+                    chip->reg[iregx] = ((chip->reg[iregy] << 1) & 0xfe);
+                    chip->reg[0xf] = carry;
+                } break;
                 default:
                     fprintf(stderr, "Unknown instruction 0x%04x\n", instr);
                     exit_rountine(EXIT_FAILURE);
@@ -240,12 +248,17 @@ void exec_instr(opcode instr) {
         case 0xe:
             switch (instr & 0xff) {
                 case 0x9e:
-                    if (chip->input[chip->reg[(instr & 0x0f00) >> 8]]) {
+                    if (chip->input[chip->reg[(instr & 0x0f00) >> 8]] == 0x1) {
                         chip->pc += 2;
                     }
                     chip->pc += 2;
                     break;
-
+                case 0xa1:
+                    if (chip->input[chip->reg[(instr & 0x0f00) >> 8]] == 0x0) {
+                        chip->pc += 2;
+                    }
+                    chip->pc += 2;
+                    break;
                 default:
                     fprintf(stderr, "Unknown instruction 0x%04x\n", instr);
                     exit_rountine(EXIT_FAILURE);
@@ -281,6 +294,7 @@ void exec_instr(opcode instr) {
                     for (size_t i = 0; i <= ((instr & 0x0f00) >> 8); i++) {
                         chip->memory[chip->i + i] = chip->reg[i];
                     }
+                    chip->i += ((instr & 0x0f00) >> 8) + 1;
                     chip->pc += 2;
                     break;
                 case 0x65:
@@ -288,6 +302,15 @@ void exec_instr(opcode instr) {
                         chip->reg[i] = chip->memory[chip->i + i];
                     }
                     chip->pc += 2;
+                    break;
+                case 0x0a:
+                    for (size_t i = 0; i < 16; i++) {
+                        if (chip->input[i] == 0x1) {
+                            chip->reg[((instr & 0x0f00) >> 8)] = i;
+                            chip->pc += 2;
+                            break;
+                        }
+                    }
                     break;
                 default:
                     fprintf(stderr, "Unknown instruction 0x%04x\n", instr);
@@ -299,6 +322,85 @@ void exec_instr(opcode instr) {
         default:
             fprintf(stderr, "Unknown instruction 0x%04x\n", instr);
             exit_rountine(EXIT_FAILURE);
+            break;
+    }
+}
+
+void handle_input(SDL_Event* event) {
+    if (!SDL_PollEvent(event)) {
+        return;
+    }
+
+    if (event->type == SDL_QUIT) {
+        exit_rountine(EXIT_SUCCESS);
+    }
+
+    unsigned char value;
+    switch (event->type) {
+        case SDL_KEYDOWN:
+            value = 0x1;
+            //printf("%d is down!", event->key.keysym.sym);
+            break;
+        case SDL_KEYUP:
+            value = 0x0;
+            //printf("%d is up!", event->key.keysym.sym);
+            break;
+        default:
+            //dont do shit
+            //printf("wtf yavais un autre event possible? %d\n", event->type);
+            break;
+    }
+
+    switch (event->key.keysym.sym) {
+        case SDLK_1:
+            chip->input[0x1] = value;
+            break;
+        case SDLK_2:
+            chip->input[0x2] = value;
+            break;
+        case SDLK_3:
+            chip->input[0x3] = value;
+            break;
+        case SDLK_4:
+            chip->input[0xc] = value;
+            break;
+        case SDLK_a:
+            chip->input[0x7] = value;
+            break;
+        case SDLK_z:
+            chip->input[0x5] = value;
+            break;
+        case SDLK_e:
+            chip->input[0x6] = value;
+            break;
+        case SDLK_r:
+            chip->input[0xd] = value;
+            break;
+        case SDLK_q:
+            chip->input[0x7] = value;
+            break;
+        case SDLK_s:
+            chip->input[0x8] = value;
+            break;
+        case SDLK_d:
+            chip->input[0x9] = value;
+            break;
+        case SDLK_f:
+            chip->input[0xe] = value;
+            break;
+        case SDLK_w:
+            chip->input[0xa] = value;
+            break;
+        case SDLK_x:
+            chip->input[0x0] = value;
+            break;
+        case SDLK_c:
+            chip->input[0xb] = value;
+            break;
+        case SDLK_v:
+            chip->input[0xf] = value;
+            break;
+        default:
             break;
     }
 }

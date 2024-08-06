@@ -70,19 +70,65 @@ void SDL_close(sdl_graphics* graphics) {
 //Gotta check if it s right tho
 void drawScreen(char x, char y, char n) {
     chip->reg[0xf] = 0x0;
+    x %= SCREEN_WIDTH;
+    y %= SCREEN_HEIGHT;
     for (char i = 0; i < n; i++) {
         //Do one line (one byte of data)
+        if (y + i > SCREEN_HEIGHT) {
+            break;
+        }
         for (char j = 0; j < 8; j++) {
-            size_t pixel_addr = ((x + j) % SCREEN_WIDTH) + ((y + i) % SCREEN_HEIGHT) * SCREEN_WIDTH;
+            if (x + j >= SCREEN_WIDTH) {
+                //clipping the rest of the line
+                break;
+            }
+            size_t pixel_addr = ((x + j)) + ((y + i)) * SCREEN_WIDTH;
             char old_pixel = chip->screen[pixel_addr];
             chip->screen[pixel_addr] ^= (chip->memory[chip->i + i] >> (((8 - 1) - j)));
             chip->screen[pixel_addr] &= 0x1; //keep only the bit that says if it is on or off
             char new_pixel = chip->screen[pixel_addr];
             //update VF if needed
-            chip->reg[0xf] |= ((new_pixel == old_pixel) ? 0x1 : 0x0);
+            chip->reg[0xf] |= (old_pixel = 0x1 && new_pixel == 0x0);
         }
     }
 }
+
+/* void drawScreen(char x, char y, char n) {
+    printf("printing\n");
+    chip->reg[0xf] = 0x0;
+    x %= SCREEN_WIDTH;
+    y %= SCREEN_HEIGHT;
+
+    for (char i = 0; i < n; i++) {
+        if (y + i >= SCREEN_HEIGHT) {
+            printf("breaking\n");
+            //clipping the rest of the sprite
+            break;
+        }
+        char data = chip->memory[chip->i + i];
+        if (data == 0x0) {
+            continue;
+        }
+        printf("data is 0x%02x\n", data);
+        for (char j = 0; j < 8; j++) {
+            if (x + j >= SCREEN_WIDTH) {
+                printf("breaking bad\n");
+                //clipping the rest of the line
+                continue;
+            }
+            if (((data >> ((8 - 1) - j)) & 0x1) == 0x0) {
+                continue;
+            }
+            printf("pixel is 0x%01x\n", ((data >> ((8 - 1) - j)) & 0x1));
+            size_t pixel_address = (x + j) + ((y + i) * SCREEN_WIDTH);
+            chip->screen[pixel_address] ^= 0x1;
+            //chip->reg[0xf] |= !(chip->screen[pixel_address]);
+            if (chip->screen[pixel_address] == 0x0) {
+                chip->reg[0xf] = 0x1;
+            }
+        }
+    }
+} */
 
 void printDisplay(void) {
     for (size_t i = 0; i < SCREEN_HEIGHT; i++) {

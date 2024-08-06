@@ -77,5 +77,6 @@ void initialize_chip8(char* path_to_rom);
 void exec_instr(opcode instr);
 void emulate_cycle(void);
 void exit_rountine(int exit_code);
+void handle_input(SDL_Event* event);
 
 #endif

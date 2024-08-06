@@ -33,3 +33,4 @@ help:
 clean:
 	rm -f $(OBJDIR)/*.o
 	rm -rf $(EXEC)
+	rm -rf $(EXEC)_debug

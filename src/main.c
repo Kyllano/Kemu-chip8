@@ -4,23 +4,21 @@ chip8* chip;
 
 int main(int argc, char* args[]) {
     //setup graphics
-    initialize_chip8("./rom/octojam.ch8");
+    initialize_chip8("./rom/quirk.ch8");
+    SDL_Event event;
 
-    for (size_t i = 0; i < 2000; i++) {
-        emulate_cycle();
+    while (1) {
+        handle_input(&event);
+
+        for (size_t i = 0; i < 11; i++) {
+            emulate_cycle();
+        }
+
         fflush(stdout);
-        usleep(500);
+        usleep(1000);
     }
 
     printf("We done yeah?\n");
-
-    SDL_Event event;
-    while (1) {
-        usleep(5000);
-        if (SDL_PollEvent(&event) && event.type == SDL_QUIT) {
-            break;
-        }
-    }
 
     exit_rountine(0);
     return 0;
